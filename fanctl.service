@@ -1,0 +1,7 @@
+[Unit]
+Description=Fan Control
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/fanctl >/var/log/fanctl.log
+
