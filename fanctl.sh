@@ -36,9 +36,6 @@ function main()
 {
     [ $EUID -ne 0 ] && echo "Run it as root." && return 1
 
-    # hack!
-    sleep 1
-
     tempin="${FANCTL_ASMC}/${FANCTL_TID}_input"
     fanmin="${FANCTL_ASMC}/${FANCTL_FID}_min"
     fanmax="${FANCTL_ASMC}/${FANCTL_FID}_max"

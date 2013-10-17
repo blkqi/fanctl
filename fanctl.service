@@ -1,7 +1,11 @@
 [Unit]
 Description=Fan Control
+After=remote-fs.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/fanctl.sh
+Restart=always
+ExecStart=/usr/sbin/fanctl
 
+[Install]
+WantedBy=multi-user.target
