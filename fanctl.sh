@@ -1,54 +1,69 @@
 #!/bin/bash
 
-# path to applesmc (in sysfs)
-asmc="/sys/devices/platform/applesmc.768"
+# Path to applesmc (path in sysfs)
+FANCTL_ASMC="/sys/devices/platform/applesmc.768"
 
-# fan to control
-fid="fan1"
+# Fan to control (file ${FANCTL_ASMC}/${FANCTL_FID}_*)
+FANCTL_FID="fan1"
 
-# thermo to read
-tid="temp7"
+# Thermo to read (file ${FANCTL_ASMC}/${FANCTL_TID}_*)
+FANCTL_TID="temp7"
 
-# time between runs
-interval=5
+# Time between runs (seconds)
+FANCTL_INTERVAL=5
 
-# frequency scaling model
-function freq_model {
-    echo $(($1 * 200 - 10000))
+# Frequency scaling model (mapping temp -> freq)
+# - input  scale C/10^3
+# - output scale rpm
+function scale {
+    echo $(($1 / 5 - 10000))
 }
 
-# don't edit below this line
-function normalize {
-    [[ $1 -lt $2 ]] && echo $2 && return
-    [[ $1 -gt $3 ]] && echo $3 && return
+# Don't edit below this line
+function norm {
+    [ $1 -lt $2 ] && echo $2 && return
+    [ $1 -gt $3 ] && echo $3 && return
     echo $1
 }
 
-# control paths
-_fan=${asmc}/${fid}
-_temp=${asmc}/${tid}
-
-read _fan_min < ${_fan}_min
-read _fan_max < ${_fan}_max
-
 function run {
     read temp
-    temp=$((${temp} / 1000))
-    freq=$(freq_model ${temp})
-    freq=$(normalize ${freq} ${_fan_min} ${_fan_max})
-    smsg=$(printf "%s | `date` | %2i C (%s) | %4i rpm (%s)\n" ${0} ${temp} ${tid} ${freq} ${fid})
-    echo ${freq}
+    freq=$(norm `scale $temp` $1 $2)
+    echo $freq
 }
 
-# you must enable manual fan setting
-echo "1" 2>/dev/null > ${_fan}_manual
-if [[ ${?} -ne 0 ]] ; then
-    echo "Run it as root." && exit 1
-fi
+function main()
+{
+    [ $EUID -ne 0 ] && echo "Run it as root." && return 1
 
-while [ 1 ] ; do
-    run < ${_temp}_input > ${_fan}_output
-    echo ${smsg} && sleep ${interval} & wait ${!}
-done
+    # hack!
+    sleep 1
 
+    tempin="${FANCTL_ASMC}/${FANCTL_TID}_input"
+    fanmin="${FANCTL_ASMC}/${FANCTL_FID}_min"
+    fanmax="${FANCTL_ASMC}/${FANCTL_FID}_max"
+    fantog="${FANCTL_ASMC}/${FANCTL_FID}_manual"
+    fanout="${FANCTL_ASMC}/${FANCTL_FID}_output"
 
+    [ ! -r $tempin ] && echo "${tempin}: Not a readable file." && return 1
+    [ ! -r $fanmin ] && echo "${fanmin}: Not a readable file." && return 1
+    [ ! -r $fanmax ] && echo "${fanmax}: Not a readable file." && return 1
+    [ ! -w $fantog ] && echo "${fantog}: Not a writeable file." && return 1
+    [ ! -w $fanout ] && echo "${fanout}: Not a writeable file." && return 1
+
+    [ `cat $fantog` -ne 1 ] && echo "1" > $fantog
+
+    printf "< %s\n" $tempin
+    printf "> %s\n" $fanout
+
+    temp=0
+    freq=0
+
+    while [ 1 ] ; do
+        run `cat $fanmin` `cat $fanmax` < $tempin > $fanout
+        printf "temp = %i C/10^3 freq = %4i rpm\n" $temp $freq
+        sleep $FANCTL_INTERVAL
+    done
+}
+
+main ${@} && exit ${!}
